@@ -3,10 +3,48 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.ServiceModel;
 
 namespace SharedContracts
 {
-    internal class LobbyServices
+    [ServiceContract]
+    public interface LobbyServices
     {
+        // Players
+        [OperationContract, FaultContract(typeof(ApiFault))]
+        Task<PlayerInfo> RegisterPlayerAsync(string username);
+
+        [OperationContract, FaultContract(typeof(ApiFault))]
+        Task<bool> HeartbeatAsync(string username); // keep alive
+
+        // Rooms
+        [OperationContract, FaultContract(typeof(ApiFault))]
+        Task<LobbyRoomInfo> CreateRoomAsync(string roomName, int capacity, bool isRanked);
+
+        [OperationContract, FaultContract(typeof(ApiFault))]
+        Task<bool> JoinRoomAsync(string roomId, string username);
+
+        [OperationContract, FaultContract(typeof(ApiFault))]
+        Task<bool> LeaveRoomAsync(string roomId, string username);
+
+        [OperationContract, FaultContract(typeof(ApiFault))]
+        Task<List<LobbyRoomInfo>> ListRoomAsync();
+
+        // Chat
+        [OperationContract, FaultContract(typeof(ApiFault))]
+        Task<bool> SendChatAsync(ChatMessage message);
+
+        // Files (byte[] version for now)
+        [OperationContract, FaultContract(typeof(ApiFault))]
+        Task<SharedFile> UploadFileAsync(SharedFile file); // returns metadata with FileId
+
+        [OperationContract, FaultContract(typeof(ApiFault))]
+        Task<SharedFile> DownloadFileAsync(string fileId);
+
+        // Summary
+        [OperationContract, FaultContract(typeof(ApiFault))]
+        Task<LobbySummary> GetLobbySummaryAsync();
+
+
     }
 }
