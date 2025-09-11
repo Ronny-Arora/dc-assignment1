@@ -5,6 +5,8 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Media;              // <— for SystemSounds
+using System.Runtime.InteropServices; // <— for FlashWindowEx
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -13,9 +15,6 @@ using System.Windows.Threading;
 
 namespace ClientSide
 {
-    /// <summary>
-    /// Interaction logic for LobbyRoomChat.xaml
-    /// </summary>
     public partial class LobbyRoomChat : UserControl
     {
         private readonly LobbyServices _proxy;
@@ -23,7 +22,6 @@ namespace ClientSide
         private LobbyRoomInfo _roomInfo; // refreshed periodically
         private readonly ContentControl _generalLobby;
 
-        // UI-bound collections
         public ObservableCollection<string> Players { get; private set; } = new ObservableCollection<string>();
         public ObservableCollection<ChatMessage> Messages { get; private set; } = new ObservableCollection<ChatMessage>();
         public ObservableCollection<SharedFile> Files { get; private set; } = new ObservableCollection<SharedFile>();
@@ -32,7 +30,11 @@ namespace ClientSide
         private readonly Random _rng = new Random();
 
         private DateTime _lastSeenUtc;
-        private const int MaxUploadBytes = 50_000; // 49–50 KB limit
+
+        // NEW: last seen private message per counterpart
+        private readonly Dictionary<string, DateTime> _lastPmSeenUtc = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+
+        private const int MaxUploadBytes = 50_000;
 
         public LobbyRoomChat(PlayerInfo currentPlayer, LobbyServices connection,
                              LobbyRoomInfo currentLobbyRoom, ContentControl generalLobby)
@@ -44,26 +46,34 @@ namespace ClientSide
             _roomInfo = currentLobbyRoom;
             _generalLobby = generalLobby;
 
-            // Bind UI
             lobbyRoomLabel.Content = "Lobby: " + _roomInfo.RoomName;
             listOfPlayers.ItemsSource = Players;
             lobbyMessages.ItemsSource = Messages;
             lobbyFiles.ItemsSource = Files;
 
-            // Seed from current snapshot
             ReplacePlayers(_roomInfo.Players);
             _lastSeenUtc = DateTime.UtcNow.AddMinutes(-5);
 
-            // One-shot initial loads
+            // init PM cursors for current players (so we don’t notify old history)
+            SeedPmCursors(_roomInfo.Players);
+
             _ = LoadInitialMessagesAsync();
             _ = LoadFilesAsync();
 
-            // Start/stop polling with lifetime
             Loaded += delegate { StartPolling(); };
             Unloaded += delegate { StopPolling(); };
         }
 
-        // --------- Initial loads ---------
+        private void SeedPmCursors(IEnumerable<string> names)
+        {
+            if (names == null) return;
+            foreach (var n in names)
+            {
+                if (string.Equals(n, _player.Username, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!_lastPmSeenUtc.ContainsKey(n)) _lastPmSeenUtc[n] = DateTime.UtcNow.AddMinutes(-2);
+            }
+        }
+
         private async Task LoadInitialMessagesAsync()
         {
             try
@@ -78,10 +88,7 @@ namespace ClientSide
                         _lastSeenUtc = Messages[Messages.Count - 1].TimestampUtc.AddTicks(1);
                 });
             }
-            catch (Exception ex)
-            {
-                ShowStatus("History load failed: " + ex.Message);
-            }
+            catch (Exception ex) { ShowStatus("History load failed: " + ex.Message); }
         }
 
         private async Task LoadFilesAsync()
@@ -95,13 +102,9 @@ namespace ClientSide
                     foreach (SharedFile f in files.OrderByDescending(f => f.SizeBytes)) Files.Add(f);
                 });
             }
-            catch (Exception ex)
-            {
-                ShowStatus("Files load failed: " + ex.Message);
-            }
+            catch (Exception ex) { ShowStatus("Files load failed: " + ex.Message); }
         }
 
-        // --------- Polling ---------
         private void StartPolling()
         {
             StopPolling();
@@ -118,7 +121,7 @@ namespace ClientSide
 
         private async Task PollLoopAsync(CancellationToken ct)
         {
-            TimeSpan baseDelay = TimeSpan.FromMilliseconds(1200);
+            TimeSpan baseDelay = TimeSpan.FromMilliseconds(1100);
             TimeSpan maxDelay = TimeSpan.FromSeconds(8);
             TimeSpan delay = baseDelay;
 
@@ -126,15 +129,55 @@ namespace ClientSide
             {
                 try
                 {
-                    // 1) New messages since last seen
+                    // --- Room messages ---
                     List<ChatMessage> newMsgs = await _proxy.GetRoomHistoryAsync(_roomInfo.RoomId, _lastSeenUtc);
 
-                    // 2) Refresh players and files (full refresh is fine for small lists)
+                    // --- Refresh players + files ---
                     List<LobbyRoomInfo> allRooms = await _proxy.ListRoomAsync();
                     LobbyRoomInfo refreshed = allRooms.FirstOrDefault(r => r.RoomId == _roomInfo.RoomId);
                     List<SharedFile> latestFiles = await _proxy.ListFilesInRoomAsync(_roomInfo.RoomId);
 
-                    // 3) Apply to UI
+                    // --- Private messages for me (from each other player) ---
+                    var pmAlerts = new List<(string fromUser, int count)>();
+                    var counterparts = (refreshed?.Players ?? _roomInfo.Players ?? new List<string>())
+                                       .Where(u => !string.Equals(u, _player.Username, StringComparison.OrdinalIgnoreCase))
+                                       .Distinct(StringComparer.OrdinalIgnoreCase)
+                                       .ToList();
+
+                    // ensure cursors exist for newcomers
+                    foreach (var u in counterparts)
+                        if (!_lastPmSeenUtc.ContainsKey(u)) _lastPmSeenUtc[u] = DateTime.UtcNow.AddMinutes(-2);
+
+                    foreach (var other in counterparts)
+                    {
+                        DateTime since = _lastPmSeenUtc[other];
+                        List<ChatMessage> pmNew = await _proxy.GetPrivateHistoryAsync(_player.Username, other, since);
+
+                        // Only count new messages SENT BY 'other' to me (ignore my outgoing)
+                        var incoming = pmNew.Where(m =>
+                            m.IsPrivate &&
+                            !string.Equals(m.Sender, _player.Username, StringComparison.OrdinalIgnoreCase) &&
+                            (string.Equals(m.PrivateRecipient, _player.Username, StringComparison.OrdinalIgnoreCase) ||
+                             string.IsNullOrEmpty(m.PrivateRecipient))) // in case server omits on history
+                            .OrderBy(m => m.TimestampUtc)
+                            .ToList();
+
+                        if (incoming.Count > 0)
+                        {
+                            // advance cursor
+                            _lastPmSeenUtc[other] = incoming.Last().TimestampUtc.AddTicks(1);
+                            pmAlerts.Add((other, incoming.Count));
+                        }
+                        else
+                        {
+                            // advance if server has older echoes
+                            var last = pmNew.OrderBy(m => m.TimestampUtc).LastOrDefault();
+                            if (last != null && last.TimestampUtc >= _lastPmSeenUtc[other])
+                                _lastPmSeenUtc[other] = last.TimestampUtc.AddTicks(1);
+                        }
+                    }
+
+                    // --- Apply to UI ---
                     await Dispatcher.InvokeAsync(delegate
                     {
                         foreach (ChatMessage m in newMsgs.OrderBy(m => m.TimestampUtc))
@@ -146,7 +189,11 @@ namespace ClientSide
 
                         if (refreshed != null) _roomInfo = refreshed;
                         if (_roomInfo != null && _roomInfo.Players != null)
+                        {
                             ReplacePlayers(_roomInfo.Players);
+                            // ensure cursors exist after refresh
+                            SeedPmCursors(_roomInfo.Players);
+                        }
 
                         if (latestFiles != null)
                         {
@@ -156,6 +203,21 @@ namespace ClientSide
 
                         statusText.Text = string.Format("Last refresh: {0:T} • Players: {1} • Msgs: {2} • Files: {3}",
                                                         DateTime.Now, Players.Count, Messages.Count, Files.Count);
+
+                        // Show one toast per cycle (aggregate if multiple)
+                        if (pmAlerts.Count == 1)
+                        {
+                            ShowPmToast(pmAlerts[0].fromUser + " sent you " + pmAlerts[0].count + " private message(s)");
+                            TryFlashTaskbar();
+                            TryPing();
+                        }
+                        else if (pmAlerts.Count > 1)
+                        {
+                            int sum = pmAlerts.Sum(a => a.count);
+                            ShowPmToast(string.Format("{0} users sent you {1} private messages", pmAlerts.Count, sum));
+                            TryFlashTaskbar();
+                            TryPing();
+                        }
                     }, DispatcherPriority.Background);
 
                     delay = baseDelay;
@@ -172,13 +234,66 @@ namespace ClientSide
                     delay = TimeSpan.FromMilliseconds(next);
                 }
 
-                TimeSpan jitter = TimeSpan.FromMilliseconds(_rng.Next(0, 300));
+                TimeSpan jitter = TimeSpan.FromMilliseconds(_rng.Next(0, 280));
                 try { await Task.Delay(delay + jitter, ct); }
                 catch (OperationCanceledException) { break; }
             }
         }
 
-        // --------- Helpers ---------
+        // ----- Toast / Attention -----
+        private async void ShowPmToast(string text)
+        {
+            if (pmToast == null || pmToastText == null) return;
+            pmToastText.Text = text ?? "New private message";
+            pmToast.IsOpen = true;
+
+            // auto-hide after ~3 seconds
+            try
+            {
+                await Task.Delay(3000);
+                pmToast.IsOpen = false;
+            }
+            catch { /* ignore */ }
+        }
+
+        private void TryPing()
+        {
+            try { SystemSounds.Asterisk.Play(); } catch { }
+        }
+
+        // Flash taskbar (Windows) to attract attention
+        private void TryFlashTaskbar()
+        {
+            try
+            {
+                var wnd = Window.GetWindow(this);
+                if (wnd == null) return;
+
+                FLASHWINFO fw = new FLASHWINFO();
+                fw.cbSize = Convert.ToUInt32(Marshal.SizeOf(fw));
+                fw.hwnd = new System.Windows.Interop.WindowInteropHelper(wnd).Handle;
+                fw.dwFlags = 0x00000003 /* FLASHW_ALL */ | 0x0000000C /* FLASHW_TIMERNOFG */;
+                fw.uCount = 3;
+                fw.dwTimeout = 0;
+                FlashWindowEx(ref fw);
+            }
+            catch { /* best-effort */ }
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct FLASHWINFO
+        {
+            public uint cbSize;
+            public IntPtr hwnd;
+            public uint dwFlags;
+            public uint uCount;
+            public uint dwTimeout;
+        }
+
+        [DllImport("user32.dll")]
+        private static extern bool FlashWindowEx(ref FLASHWINFO pfwi);
+
+        // ----- Helpers / UI -----
         private void ReplacePlayers(IEnumerable<string> names)
         {
             Players.Clear();
@@ -192,11 +307,11 @@ namespace ClientSide
             System.Diagnostics.Debug.WriteLine(msg);
         }
 
-        // --------- Buttons ---------
+        // ----- Buttons -----
         private async void LeaveRoomButton_Click(object sender, RoutedEventArgs e)
         {
             try { await _proxy.LeaveRoomAsync(_roomInfo.RoomId, _player.Username); }
-            catch { /* best effort */ }
+            catch { }
             finally
             {
                 StopPolling();
@@ -222,16 +337,10 @@ namespace ClientSide
             {
                 await _proxy.SendChatAsync(msg);
                 messageInput.Text = "";
-
-                // optimistic append
                 Messages.Add(msg);
-                if (msg.TimestampUtc >= _lastSeenUtc)
-                    _lastSeenUtc = msg.TimestampUtc.AddTicks(1);
+                if (msg.TimestampUtc >= _lastSeenUtc) _lastSeenUtc = msg.TimestampUtc.AddTicks(1);
             }
-            catch (Exception ex)
-            {
-                ShowStatus("Send failed: " + ex.Message);
-            }
+            catch (Exception ex) { ShowStatus("Send failed: " + ex.Message); }
         }
 
         private void MessagePlayerButton_Click(object sender, RoutedEventArgs e)
@@ -251,22 +360,17 @@ namespace ClientSide
         {
             try
             {
-                OpenFileDialog dlg = new OpenFileDialog
+                var dlg = new OpenFileDialog
                 {
                     Title = "Select file to share",
                     Filter = "Images/Text|*.bmp;*.jpg;*.jpeg;*.gif;*.png;*.tiff;*.txt|All files|*.*",
                     Multiselect = false
                 };
-
                 bool? ok = dlg.ShowDialog();
                 if (ok != true) return;
 
                 byte[] bytes = File.ReadAllBytes(dlg.FileName);
-                if (bytes.Length > MaxUploadBytes)
-                {
-                    ShowStatus("File too large. Max 50 KB.");
-                    return;
-                }
+                if (bytes.Length > MaxUploadBytes) { ShowStatus("File too large (max 50 KB)."); return; }
 
                 SharedFile newFile = new SharedFile
                 {
@@ -279,13 +383,9 @@ namespace ClientSide
 
                 await _proxy.UploadFileAsync(newFile);
                 ShowStatus("File uploaded.");
-
-                await LoadFilesAsync(); // refresh immediately
+                await LoadFilesAsync();
             }
-            catch (Exception ex)
-            {
-                ShowStatus("Upload failed: " + ex.Message);
-            }
+            catch (Exception ex) { ShowStatus("Upload failed: " + ex.Message); }
         }
 
         private async void DownloadFileButton_Click(object sender, RoutedEventArgs e)
@@ -293,36 +393,28 @@ namespace ClientSide
             try
             {
                 SharedFile fileToDownload = lobbyFiles.SelectedItem as SharedFile;
-                if (fileToDownload == null)
-                {
-                    ShowStatus("Select a file first.");
-                    return;
-                }
+                if (fileToDownload == null) { ShowStatus("Select a file first."); return; }
 
-                SaveFileDialog dlg = new SaveFileDialog
+                var dlg = new SaveFileDialog
                 {
                     Title = "Save file",
                     FileName = fileToDownload.FileName,
                     Filter = "All files|*.*"
                 };
-
                 bool? ok = dlg.ShowDialog();
                 if (ok != true) return;
 
                 byte[] content = fileToDownload.Content;
                 if (content == null || content.Length == 0)
                 {
-                    ShowStatus("No file content available.");
+                    ShowStatus("No file content available."); // or call DownloadFileAsync here if you have it
                     return;
                 }
 
                 File.WriteAllBytes(dlg.FileName, content);
                 ShowStatus("File saved.");
             }
-            catch (Exception ex)
-            {
-                ShowStatus("Download failed: " + ex.Message);
-            }
+            catch (Exception ex) { ShowStatus("Download failed: " + ex.Message); }
         }
     }
 }
