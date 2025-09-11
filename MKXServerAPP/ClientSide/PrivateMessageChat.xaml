@@ -7,42 +7,24 @@
         mc:Ignorable="d"
         Title="PrivateMessageChat" Height="450" Width="800">
     <Grid>
-        <Grid Name="ChattingElements" HorizontalAlignment="Stretch">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <GridSplitter Grid.Column="0"
-      HorizontalAlignment="Right"
-      VerticalAlignment="Stretch"
-      Background="Gray" 
-      ShowsPreview="True"
-      Width="3"
-      />
-            <StackPanel Grid.Column="0" Orientation="Vertical">
-                <Label Name="privateMessageLabel" Content="Private Messaging: " FontWeight="Bold" HorizontalAlignment="Center"/>
-                <ListBox Name="privateMessages" VerticalAlignment="Stretch">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate DataType="{x:Type local1:ChatMessage}">
-                            <StackPanel Orientation="Vertical">
-                                <TextBlock Text="{Binding Sender}" FontWeight="Bold"/>
-                                <Grid>
-                                    <Rectangle
+        <StackPanel Orientation="Vertical">
+            <Label Name="privateMessageLabel" Content="Private Messaging: " FontWeight="Bold" HorizontalAlignment="Center"/>
+            <ListBox Name="privateMessages" VerticalAlignment="Stretch">
+                <ListBox.ItemTemplate>
+                    <DataTemplate DataType="{x:Type local1:ChatMessage}">
+                        <StackPanel Orientation="Vertical">
+                            <TextBlock Text="{Binding Sender}" FontWeight="Bold"/>
+                            <Grid>
+                                <Rectangle
                                 Fill="CornflowerBlue"
                                 RadiusX="5" RadiusY="5" />
-                                    <TextBlock Text="{Binding Body}" FontWeight="Normal" Margin="5,5,5,5"/>
-                                </Grid>
-                            </StackPanel>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-            </StackPanel>
-            <StackPanel Grid.Column="1" Orientation="Vertical">
-                <Label Content="Shared Files" FontWeight="Bold" HorizontalAlignment="Center"/>
-                <Button Content="Share file" HorizontalAlignment="Center" Click="ShareFileButton_Click"></Button>
-                <ListBox Name="privateFiles" VerticalAlignment="Stretch"/>
-            </StackPanel>
-        </Grid>
+                                <TextBlock Text="{Binding Body}" FontWeight="Normal" Margin="5,5,5,5"/>
+                            </Grid>
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </StackPanel>
         <Grid Name="SendMessageGrid" HorizontalAlignment="Stretch" VerticalAlignment="Bottom">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />

@@ -52,9 +52,18 @@
             </StackPanel>
                 <StackPanel Grid.Column="2" Orientation="Vertical">
                     <Label Content="Shared Files" FontWeight="Bold" HorizontalAlignment="Center"/>
-                <Button Content="Share file" HorizontalAlignment="Center" Click="ShareFileButton_Click"></Button>
-                <ListBox Name="lobbyFiles" VerticalAlignment="Stretch"/>
-                </StackPanel>
+                <UniformGrid Rows="1" Columns="2">
+                    <Button Content="Share file" HorizontalAlignment="Center" Click="ShareFileButton_Click"></Button>
+                    <Button Content="Download file" HorizontalAlignment="Center" Click="DownloadFileButton_Click"></Button>
+                </UniformGrid>
+                <ListBox Name="lobbyFiles" VerticalAlignment="Stretch">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="{x:Type local1:SharedFile}">
+                            <TextBlock Margin="7,7,7,7" Name="DownloadFileButton" Text="{Binding FileName}"/>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </StackPanel>
             </Grid>
             <Grid Name="SendMessageGrid" HorizontalAlignment="Stretch" VerticalAlignment="Bottom">
                 <Grid.ColumnDefinitions>

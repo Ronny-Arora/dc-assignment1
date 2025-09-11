@@ -1,25 +1,31 @@
-﻿using SharedContracts;
+﻿using Microsoft.Win32;
+using SharedContracts;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Documents;
+using System.Windows.Forms;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using OpenFileDialog = System.Windows.Forms.OpenFileDialog;
+using SaveFileDialog = System.Windows.Forms.SaveFileDialog;
 
 namespace ClientSide
 {
     /// <summary>
     /// Interaction logic for LobbyRoomChat.xaml
     /// </summary>
-    public partial class LobbyRoomChat : UserControl
+    public partial class LobbyRoomChat : System.Windows.Controls.UserControl
     {
         private readonly LobbyServices _proxy;
         private readonly PlayerInfo _player;
@@ -27,6 +33,7 @@ namespace ClientSide
         private readonly LobbyRoomInfo _roomInfo;
         private readonly ContentControl _generalLobby;
         private List<ChatMessage> _messages;
+        private List<SharedFile> _files;
 
         public LobbyRoomChat(PlayerInfo currentPlayer, LobbyServices connection, 
                             LobbyRoomInfo currentLobbyRoom, ContentControl generalLobby)
@@ -84,9 +91,54 @@ namespace ClientSide
             }
         }
 
-        private void ShareFileButton_Click(object sender, RoutedEventArgs e)
+        private async void ShareFileButton_Click(object sender, RoutedEventArgs e)
         {
+            byte[] fileContent = null;
+            var filePath = string.Empty;
 
+            using (OpenFileDialog openFileDialog = new OpenFileDialog())
+            {
+                openFileDialog.InitialDirectory = "c:\\";
+                openFileDialog.Filter = "Image Files (*.PNG;*.BMP;*.JPG;*.JPEG;*.TIFF;*.GIF)|*.BMP;*.JPG;*.GIF;*.PNG;*.JPEG;*.TIFF|Text files (*.txt)|*.txt";
+                openFileDialog.FilterIndex = 1;
+                openFileDialog.RestoreDirectory = true;
+
+                if (openFileDialog.ShowDialog() == DialogResult.OK)
+                {
+                    //Get the path of specified file
+                    filePath = openFileDialog.FileName;
+
+                    //Read the contents of the file into a stream
+                    var fileStream = openFileDialog.OpenFile();
+
+                    using (BinaryReader r = new BinaryReader(fileStream))
+                    {
+                        fileContent = r.ReadBytes(50000); // 49KB is max file size allowed
+                    }
+                }
+
+                SharedFile newFile = new SharedFile
+                {
+                    RoomID = _roomInfo.RoomId,
+                    FileName = openFileDialog.SafeFileName,
+                    Uploader = _player.Username,
+                    SizeBytes = fileContent.Length,
+                    Content = fileContent
+                };
+
+                await _proxy.UploadFileAsync(newFile);
+
+                UpdateSharedFiles();
+            }
+        }
+
+        public async void UpdateSharedFiles()
+        {
+            // Update for real-time changes
+
+            _files = await _proxy.ListFilesInRoomAsync(_roomInfo.RoomId);
+
+            lobbyFiles.ItemsSource = _files;
         }
 
         private async void LeaveRoomButton_Click(object sender, RoutedEventArgs e)
@@ -116,6 +168,31 @@ namespace ClientSide
             messageInput.Text = "";
 
             GetMessages();
+        }
+
+        private void DownloadFileButton_Click(object sender, RoutedEventArgs e)
+        {
+            SharedFile fileToDownload = lobbyFiles.SelectedItem as SharedFile;
+            var filePath = "";
+
+            if (fileToDownload != null)
+            {
+                using (SaveFileDialog saveFileDialog = new SaveFileDialog())
+                {
+                    saveFileDialog.InitialDirectory = "c:\\";
+                    saveFileDialog.Filter = "Image Files (*.PNG;*.BMP;*.JPG;*.JPEG;*.TIFF;*.GIF)|*.BMP;*.JPG;*.GIF;*.PNG;*.JPEG;*.TIFF|Text files (*.txt)|*.txt";
+                    saveFileDialog.FilterIndex = 1;
+                    saveFileDialog.RestoreDirectory = true;
+
+                    if (saveFileDialog.ShowDialog() == DialogResult.OK)
+                    {
+                        //Get the path of specified file
+                        filePath = saveFileDialog.FileName;
+
+                        File.WriteAllBytes(filePath, fileToDownload.Content);
+                    }
+                }
+            }
         }
     }
 }

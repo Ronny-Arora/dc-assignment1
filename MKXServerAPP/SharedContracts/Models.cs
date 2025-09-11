@@ -41,6 +41,7 @@ namespace SharedContracts
     public class SharedFile
     {
         [DataMember] public string FieldID { get; set; } = Guid.NewGuid().ToString();
+        [DataMember] public string RoomID { get; set; }
         [DataMember] public string FileName { get; set; }
         [DataMember] public string Uploader { get; set; }
         [DataMember] public DateTime UploadedAtUtc { get; set; } = DateTime.UtcNow;
