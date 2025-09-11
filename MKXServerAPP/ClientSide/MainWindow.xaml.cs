@@ -47,9 +47,7 @@ namespace ClientSide
             PlayerInfo currentPlayer = await Register(usernameInput.Text);
 
             // extra players to test private messaging
-            await Register("Bob1");
-            await Register("Bob2");
-            await Register("Bob3");
+
 
             // Open general lobby window
             var generalLobby = new GeneralLobby(currentPlayer, _proxy);

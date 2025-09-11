@@ -1,11 +1,6 @@
 {
   "ExpandedNodes": [
-    "",
-    "\\ClientSide",
-    "\\MKXServerAPP",
-    "\\MKXServerAPP\\SharedContracts",
-    "\\MKXServerAPP\\WcfService1"
+    ""
   ],
-  "SelectedNode": "\\MKXServerAPP\\MKXServerAPP.sln",
   "PreviewInSolutionExplorer": false
 }
