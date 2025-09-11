@@ -34,6 +34,7 @@ namespace SharedContracts
         [DataMember(Order = 4)] public DateTime TimestampUtc { get; set; } = DateTime.UtcNow;
         [DataMember(Order = 5)] public bool IsPrivate { get; set; } // PascalCase for property
         [DataMember(Order = 6)] public string PrivateRecipient { get; set; } = null;
+        [DataMember(Order = 7, EmitDefaultValue = false)] public bool IsSystem { get; set; }
     }
 
     [DataContract]
