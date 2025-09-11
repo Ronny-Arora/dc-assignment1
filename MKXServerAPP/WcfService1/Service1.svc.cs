@@ -127,6 +127,7 @@ namespace WcfService1
             return Task.FromResult(list);
         }
 
+
         // Chat
         public Task<bool> SendChatAsync(ChatMessage message)
         {
