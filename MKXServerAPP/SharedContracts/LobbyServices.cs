@@ -46,6 +46,9 @@ namespace SharedContracts
         Task<SharedFile> UploadFileAsync(SharedFile file); // returns metadata with FileId
 
         [OperationContract, FaultContract(typeof(ApiFault))]
+        Task<List<SharedFile>> ListFilesInRoomAsync(string roomId);
+
+        [OperationContract, FaultContract(typeof(ApiFault))]
         Task<SharedFile> DownloadFileAsync(string fileId);
 
         // Summary

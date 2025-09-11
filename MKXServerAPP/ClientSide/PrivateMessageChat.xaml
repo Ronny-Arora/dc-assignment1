@@ -3,53 +3,41 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:ClientSide" xmlns:local1="clr-namespace:SharedContracts;assembly=SharedContracts"
+        xmlns:local1="clr-namespace:SharedContracts;assembly=SharedContracts"
         mc:Ignorable="d"
         Title="PrivateMessageChat" Height="450" Width="800">
-    <Grid>
-        <Grid Name="ChattingElements" HorizontalAlignment="Stretch">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <GridSplitter Grid.Column="0"
-      HorizontalAlignment="Right"
-      VerticalAlignment="Stretch"
-      Background="Gray" 
-      ShowsPreview="True"
-      Width="3"
-      />
-            <StackPanel Grid.Column="0" Orientation="Vertical">
-                <Label Name="privateMessageLabel" Content="Private Messaging: " FontWeight="Bold" HorizontalAlignment="Center"/>
-                <ListBox Name="privateMessages" VerticalAlignment="Stretch">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate DataType="{x:Type local1:ChatMessage}">
-                            <StackPanel Orientation="Vertical">
-                                <TextBlock Text="{Binding Sender}" FontWeight="Bold"/>
-                                <Grid>
-                                    <Rectangle
-                                Fill="CornflowerBlue"
-                                RadiusX="5" RadiusY="5" />
-                                    <TextBlock Text="{Binding Body}" FontWeight="Normal" Margin="5,5,5,5"/>
-                                </Grid>
-                            </StackPanel>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-            </StackPanel>
-            <StackPanel Grid.Column="1" Orientation="Vertical">
-                <Label Content="Shared Files" FontWeight="Bold" HorizontalAlignment="Center"/>
-                <Button Content="Share file" HorizontalAlignment="Center" Click="ShareFileButton_Click"></Button>
-                <ListBox Name="privateFiles" VerticalAlignment="Stretch"/>
-            </StackPanel>
-        </Grid>
-        <Grid Name="SendMessageGrid" HorizontalAlignment="Stretch" VerticalAlignment="Bottom">
+    <Grid Margin="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Label Name="privateMessageLabel" Content="Private Messaging: " FontWeight="Bold" HorizontalAlignment="Center"/>
+
+        <ListBox Name="privateMessages" Grid.Row="1" VerticalAlignment="Stretch">
+            <ListBox.ItemTemplate>
+                <DataTemplate DataType="{x:Type local1:ChatMessage}">
+                    <StackPanel Orientation="Vertical">
+                        <TextBlock Text="{Binding Sender}" FontWeight="Bold"/>
+                        <Border Background="CornflowerBlue" CornerRadius="5" Padding="5" Margin="0,2,0,6">
+                            <TextBlock Text="{Binding Body}" />
+                        </Border>
+                        <TextBlock Text="{Binding TimestampUtc}" FontStyle="Italic" FontSize="11" Foreground="Gray"/>
+                    </StackPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <TextBlock x:Name="pmStatusText" Grid.Row="2" Foreground="DarkRed" Margin="0,4,0,4" HorizontalAlignment="Left"/>
+
+        <Grid Grid.Row="2" HorizontalAlignment="Stretch" VerticalAlignment="Bottom">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" MinWidth="60"/>
             </Grid.ColumnDefinitions>
-            <TextBox Name="messageInput" Grid.Column="0"></TextBox>
-            <Button Grid.Column="1" Content="Send" Click="SendMessageButton_Click"></Button>
+            <TextBox Name="messageInput" Grid.Column="0" Margin="0,0,8,0"/>
+            <Button Grid.Column="1" Content="Send" Click="SendMessageButton_Click"/>
         </Grid>
     </Grid>
 </Window>

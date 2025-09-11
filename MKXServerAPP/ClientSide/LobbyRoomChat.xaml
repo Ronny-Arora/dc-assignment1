@@ -5,109 +5,73 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:local1="clr-namespace:SharedContracts;assembly=SharedContracts"
              mc:Ignorable="d"
-             d:DesignHeight="520" d:DesignWidth="980">
-
+             d:DesignHeight="450" d:DesignWidth="800">
     <Grid>
-        <!-- Top: players / chat / files -->
-        <Grid Margin="8" >
+        <Grid Name="ChattingElements" HorizontalAlignment="Stretch" Margin="8">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="220"/>
+                <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="260"/>
-                <ColumnDefinition Width="6"/>
-                <!-- splitter gutter -->
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="6"/>
-                <!-- splitter gutter -->
-                <ColumnDefinition Width="280"/>
             </Grid.ColumnDefinitions>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="28"/>
-                <!-- status -->
-            </Grid.RowDefinitions>
 
-            <!-- Players pane -->
-            <DockPanel Grid.Column="0" Grid.RowSpan="2" LastChildFill="True">
-                <StackPanel DockPanel.Dock="Top" Margin="0,0,0,6">
-                    <TextBlock Text="Players" FontWeight="Bold" FontSize="14" HorizontalAlignment="Center" />
-                    <Button Content="DM Player" Click="MessagePlayerButton_Click" HorizontalAlignment="Center" Margin="0,6,0,0"/>
-                </StackPanel>
-                <Border BorderBrush="#FFE0E0E0" BorderThickness="1" CornerRadius="6">
-                    <ListBox x:Name="listOfPlayers" Margin="4"
-                             ScrollViewer.VerticalScrollBarVisibility="Auto"/>
-                </Border>
-            </DockPanel>
+            <!-- Players -->
+            <StackPanel Grid.Column="0" Orientation="Vertical" Margin="0,0,8,0">
+                <Label Content="Players" FontWeight="Bold" HorizontalAlignment="Center"/>
+                <Button Content="DM Player" HorizontalAlignment="Center" Click="MessagePlayerButton_Click" Margin="0,0,0,6"/>
+                <ListBox Name="listOfPlayers"/>
+            </StackPanel>
 
-            <!-- Splitter left -->
-            <GridSplitter Grid.Column="1" Grid.RowSpan="2"
-                          HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                          Background="#FFE6E6E6" Width="6" />
+            <!-- Chat -->
+            <StackPanel Grid.Column="1" Orientation="Vertical" Margin="0,0,8,0">
+                <Label Name="lobbyRoomLabel" Content="Lobby Room:" FontWeight="Bold" HorizontalAlignment="Center"/>
+                <ListBox Name="lobbyMessages" VerticalAlignment="Stretch" Height="300">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="{x:Type local1:ChatMessage}">
+                            <StackPanel Orientation="Vertical" Margin="0,0,0,6">
+                                <TextBlock Text="{Binding Sender}" FontWeight="Bold"/>
+                                <Border Background="CornflowerBlue" CornerRadius="5" Padding="5" Margin="0,2,0,2">
+                                    <TextBlock Text="{Binding Body}" TextWrapping="Wrap"/>
+                                </Border>
+                                <TextBlock Text="{Binding TimestampUtc}" FontStyle="Italic" FontSize="11" Foreground="Gray"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <TextBlock x:Name="statusText" Foreground="DarkRed" Margin="0,4,0,0"/>
+            </StackPanel>
 
-            <!-- Chat pane -->
-            <DockPanel Grid.Column="2" LastChildFill="True">
-                <TextBlock x:Name="lobbyRoomLabel"
-                           DockPanel.Dock="Top"
-                           Text="Lobby Room: "
-                           FontWeight="Bold" FontSize="16" HorizontalAlignment="Center" Margin="0,0,0,6"/>
-                <Border BorderBrush="#FFE0E0E0" BorderThickness="1" CornerRadius="6" Margin="0,0,0,6">
-                    <ListBox x:Name="lobbyMessages" Margin="4"
-                             ScrollViewer.VerticalScrollBarVisibility="Auto">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate DataType="{x:Type local1:ChatMessage}">
-                                <StackPanel Orientation="Vertical" Margin="0,4">
-                                    <TextBlock Text="{Binding Sender}" FontWeight="SemiBold"/>
-                                    <Border CornerRadius="6" Padding="8" Background="#FF6495ED" >
-                                        <TextBlock Text="{Binding Body}" TextWrapping="Wrap" />
-                                    </Border>
-                                    <TextBlock Text="{Binding TimestampUtc}"
-                                               FontSize="11" Foreground="#99000000"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </Border>
-                <!-- Status line under chat -->
-                <TextBlock x:Name="statusText"
-                           DockPanel.Dock="Bottom"
-                           Height="22"
-                           VerticalAlignment="Center"
-                           Foreground="#CCB00000"
-                           TextTrimming="CharacterEllipsis"/>
-            </DockPanel>
+            <!-- Files -->
+            <StackPanel Grid.Column="2" Orientation="Vertical">
+                <Label Content="Shared Files" FontWeight="Bold" HorizontalAlignment="Center"/>
+                <UniformGrid Rows="1" Columns="2" Margin="0,0,0,6">
+                    <Button Content="Share file" HorizontalAlignment="Center" Click="ShareFileButton_Click"/>
+                    <Button Content="Download file" HorizontalAlignment="Center" Click="DownloadFileButton_Click"/>
+                </UniformGrid>
 
-            <!-- Splitter right -->
-            <GridSplitter Grid.Column="3" Grid.RowSpan="2"
-                          HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                          Background="#FFE6E6E6" Width="6" />
-
-            <!-- Files pane -->
-            <DockPanel Grid.Column="4" Grid.RowSpan="2" LastChildFill="True">
-                <StackPanel DockPanel.Dock="Top" Margin="0,0,0,6">
-                    <TextBlock Text="Shared Files" FontWeight="Bold" FontSize="14" HorizontalAlignment="Center"/>
-                    <Button Content="Share file" Click="ShareFileButton_Click" HorizontalAlignment="Center" Margin="0,6,0,0"/>
-                </StackPanel>
-                <Border BorderBrush="#FFE0E0E0" BorderThickness="1" CornerRadius="6">
-                    <ListBox x:Name="lobbyFiles" Margin="4"
-                             ScrollViewer.VerticalScrollBarVisibility="Auto"/>
-                </Border>
-            </DockPanel>
+                <ListBox Name="lobbyFiles" VerticalAlignment="Stretch">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="{x:Type local1:SharedFile}">
+                            <StackPanel Orientation="Vertical" Margin="0,0,0,6">
+                                <TextBlock Text="{Binding FileName}" FontWeight="Bold"/>
+                                <TextBlock Text="{Binding Uploader}" FontSize="11" Foreground="Gray"/>
+                                <TextBlock Text="{Binding SizeBytes}" FontSize="11" Foreground="Gray"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </StackPanel>
         </Grid>
 
         <!-- Bottom send bar -->
-        <!-- FIX: Remove Padding from Grid, wrap contents in a Border for padding -->
-        <Border VerticalAlignment="Bottom" Background="#FFF9F9F9" Padding="8">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" MinWidth="96"/>
-                    <ColumnDefinition Width="8"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="8"/>
-                    <ColumnDefinition Width="Auto" MinWidth="96"/>
-                </Grid.ColumnDefinitions>
-
-                <Button Grid.Column="0" Content="Leave room" Click="LeaveRoomButton_Click" />
-                <TextBox Grid.Column="2" x:Name="messageInput" MinHeight="28" />
-                <Button Grid.Column="4" Content="Send" Click="SendMessageButton_Click" />
-            </Grid>
-        </Border>
+        <Grid Name="SendMessageGrid" HorizontalAlignment="Stretch" VerticalAlignment="Bottom" Margin="8,0,8,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" MinWidth="90"/>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" MinWidth="60"/>
+            </Grid.ColumnDefinitions>
+            <Button Grid.Column="0" Content="Leave room" Click="LeaveRoomButton_Click"/>
+            <TextBox Name="messageInput" Grid.Column="1" Margin="8,0"/>
+            <Button Grid.Column="2" Content="Send" Click="SendMessageButton_Click"/>
+        </Grid>
     </Grid>
 </UserControl>

@@ -1,12 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.ServiceModel;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
-
 using SharedContracts;
 
 namespace ClientSide
@@ -19,12 +17,11 @@ namespace ClientSide
         private readonly LobbyServices _proxy;
         private readonly PlayerInfo _player;
 
+        private List<LobbyRoomInfo> _lobbies = new List<LobbyRoomInfo>();
         private LobbyRoomInfo _currentRoom;
 
-        public ObservableCollection<LobbyRoomInfo> Lobbies { get; } = new ObservableCollection<LobbyRoomInfo>();
-
-        // polling
         private CancellationTokenSource _lobbyPollCts;
+        private readonly Random _rng = new Random();
 
         public GeneralLobby(PlayerInfo currentPlayer, LobbyServices connection)
         {
@@ -32,46 +29,46 @@ namespace ClientSide
 
             _proxy = connection;
             _player = currentPlayer;
+            _currentRoom = null;
 
-            DataContext = this;
+            // start polling when window is ready / stop when closing
+            Loaded += delegate { StartLobbyPolling(); };
+            Unloaded += delegate { StopLobbyPolling(); };
+            Closed += delegate { StopLobbyPolling(); };
 
-            Loaded += (_, __) => StartLobbyPolling();
-            Unloaded += (_, __) => StopLobbyPolling();
-            Closed += (_, __) => StopLobbyPolling();
+            // initial load
+            _ = UpdateLobbyRooms();
         }
 
-        // ---------- POLLING ----------
+        // ---------- Polling ----------
 
         private void StartLobbyPolling()
         {
-            _lobbyPollCts?.Cancel();
+            StopLobbyPolling();
             _lobbyPollCts = new CancellationTokenSource();
             _ = PollLobbyLoopAsync(_lobbyPollCts.Token);
         }
 
-        private void StopLobbyPolling() => _lobbyPollCts?.Cancel();
+        private void StopLobbyPolling()
+        {
+            try { if (_lobbyPollCts != null) _lobbyPollCts.Cancel(); }
+            catch { }
+            finally { if (_lobbyPollCts != null) _lobbyPollCts.Dispose(); _lobbyPollCts = null; }
+        }
 
         private async Task PollLobbyLoopAsync(CancellationToken ct)
         {
-            var baseDelay = TimeSpan.FromMilliseconds(1500);
-            var maxDelay = TimeSpan.FromSeconds(10);
-            var delay = baseDelay;
+            TimeSpan baseDelay = TimeSpan.FromMilliseconds(1500);
+            TimeSpan maxDelay = TimeSpan.FromSeconds(10);
+            TimeSpan delay = baseDelay;
 
             while (!ct.IsCancellationRequested)
             {
                 try
                 {
-                    var list = await SafeListRoomsAsync(ct);
+                    await UpdateLobbyRooms();
 
-                    // update UI on the dispatcher
-                    await Dispatcher.InvokeAsync(() =>
-                    {
-                        Lobbies.Clear();
-                        foreach (var r in list) Lobbies.Add(r);
-                        ShowStatus(""); // clear any previous transient status
-                    }, DispatcherPriority.Background, ct);
-
-                    delay = baseDelay; // success -> reset delay
+                    delay = baseDelay; // reset after success
                 }
                 catch (OperationCanceledException)
                 {
@@ -79,47 +76,58 @@ namespace ClientSide
                 }
                 catch (Exception ex)
                 {
-                    // transient or unknown; surface and backoff
-                    await Dispatcher.InvokeAsync(() =>
-                        ShowStatus($"Lobby refresh problem: {ex.Message}"));
-
-                    var nextMs = Math.Min(delay.TotalMilliseconds * 2, maxDelay.TotalMilliseconds);
+                    ShowStatus("Lobby refresh problem: " + ex.Message);
+                    double nextMs = Math.Min(delay.TotalMilliseconds * 2, maxDelay.TotalMilliseconds);
                     delay = TimeSpan.FromMilliseconds(nextMs);
                 }
 
-                // With the following code:
-                var random = new Random();
-                var jitter = TimeSpan.FromMilliseconds(random.Next(0, 400));
-                await Task.Delay(delay + jitter, ct);
+                TimeSpan jitter = TimeSpan.FromMilliseconds(_rng.Next(0, 400));
+                try { await Task.Delay(delay + jitter, ct); }
+                catch (OperationCanceledException) { break; }
             }
         }
 
-        private async Task<List<LobbyRoomInfo>> SafeListRoomsAsync(CancellationToken ct)
+        // ---------- Data ops ----------
+
+        public async Task UpdateLobbyRooms()
         {
-            // Wrap WCF exceptions to keep PollLobbyLoop concise
             try
             {
-                return await _proxy.ListRoomAsync();
+                _lobbies = await ListRooms();
+
+                // UI update
+                await Dispatcher.InvokeAsync(delegate
+                {
+                    listOfLobbies.ItemsSource = null;
+                    listOfLobbies.ItemsSource = _lobbies;
+                    StatusText.Text = ""; // clear
+                }, DispatcherPriority.Background);
             }
             catch (FaultException fe)
             {
-                throw new Exception($"Server error: {fe.Message}", fe);
+                ShowStatus("Server error: " + fe.Message);
             }
-            catch (CommunicationException ce)
+            catch (CommunicationException)
             {
-                throw new Exception("Connection issue to server.", ce);
+                ShowStatus("Connection issue to server.");
             }
-            catch (TimeoutException te)
+            catch (TimeoutException)
             {
-                throw new Exception("Server timed out.", te);
+                ShowStatus("Server timed out.");
             }
         }
 
-        // ---------- UI COMMANDS / EVENTS ----------
+        public async Task<List<LobbyRoomInfo>> ListRooms()
+        {
+            return await _proxy.ListRoomAsync();
+        }
+
+        // ---------- UI events ----------
 
         private async void JoinRoomButton_Click(object sender, RoutedEventArgs e)
         {
-            var selectedRoom = listOfLobbies?.SelectedItem as LobbyRoomInfo;
+            LobbyRoomInfo selectedRoom = listOfLobbies.SelectedItem as LobbyRoomInfo;
+
             if (selectedRoom == null)
             {
                 ShowStatus("Please select a lobby to join.");
@@ -128,40 +136,22 @@ namespace ClientSide
 
             try
             {
-                // leave previous room if any
                 if (_currentRoom != null)
                 {
                     await _proxy.LeaveRoomAsync(_currentRoom.RoomId, _player.Username);
                     _currentRoom = null;
                 }
 
-                // join the selected room
                 await _proxy.JoinRoomAsync(selectedRoom.RoomId, _player.Username);
                 _currentRoom = selectedRoom;
 
-                // ⛔ removed the test joins that were adding Bob1/Bob2/Bob3
-                // Those were causing the “pre-existing users” issue.
-
-                // navigate to room chat
                 lobbyChatContent.Content = new LobbyRoomChat(_player, _proxy, selectedRoom, lobbyChatContent);
 
-                ShowStatus($"Joined room: {selectedRoom.RoomName}");
-            }
-            catch (FaultException fe)
-            {
-                ShowStatus($"Server error joining room: {fe.Message}");
-            }
-            catch (CommunicationException)
-            {
-                ShowStatus("Network/connection problem while joining the room.");
-            }
-            catch (TimeoutException)
-            {
-                ShowStatus("Join room request timed out.");
+                ShowStatus("Joined room: " + selectedRoom.RoomName);
             }
             catch (Exception ex)
             {
-                ShowStatus($"Unexpected error: {ex.Message}");
+                ShowStatus("Failed to join room: " + ex.Message);
             }
         }
 
@@ -175,9 +165,8 @@ namespace ClientSide
                     _currentRoom = null;
                 }
             }
-            catch { /* best-effort on logout */ }
+            catch { /* best-effort */ }
 
-            // back to login
             var mainWindow = new MainWindow();
             mainWindow.Show();
             Close();
@@ -190,30 +179,30 @@ namespace ClientSide
 
         private async void CreateRoomButton_Click(object sender, RoutedEventArgs e)
         {
-            var roomName = roomNameInput.Text?.Trim();
+            string roomName = (roomNameInput.Text ?? "").Trim();
 
-            if (string.IsNullOrWhiteSpace(roomName))
+            if (string.IsNullOrEmpty(roomName))
             {
                 ShowStatus("Room name is required.");
                 return;
             }
 
-            if (!int.TryParse(roomCapacityInput.Text, out var roomCapacity) || roomCapacity <= 0)
+            int roomCapacity;
+            if (!int.TryParse(roomCapacityInput.Text, out roomCapacity) || roomCapacity <= 0)
             {
                 ShowStatus("Room capacity must be a positive integer.");
                 return;
             }
 
-            var roomIsRanked = isRankedInput.IsChecked == true;
+            bool roomIsRanked = isRankedInput.IsChecked == true;
 
             try
             {
                 await _proxy.CreateRoomAsync(roomName, roomCapacity, roomIsRanked);
 
-                // force a refresh immediately instead of waiting for next poll tick
-                await RefreshLobbiesNowAsync();
+                await UpdateLobbyRooms();
 
-                // clear inputs and close popup
+                // clear inputs/close
                 roomNameInput.Text = "";
                 roomCapacityInput.Text = "";
                 isRankedInput.IsChecked = false;
@@ -221,43 +210,17 @@ namespace ClientSide
 
                 ShowStatus("Room created.");
             }
-            catch (FaultException fe)
-            {
-                ShowStatus($"Server error creating room: {fe.Message}");
-            }
-            catch (CommunicationException)
-            {
-                ShowStatus("Network/connection problem while creating room.");
-            }
-            catch (TimeoutException)
-            {
-                ShowStatus("Create room request timed out.");
-            }
             catch (Exception ex)
             {
-                ShowStatus($"Unexpected error: {ex.Message}");
+                ShowStatus("Create failed: " + ex.Message);
             }
         }
 
-        // ---------- HELPERS ----------
-
-        private async Task RefreshLobbiesNowAsync()
-        {
-            try
-            {
-                var list = await _proxy.ListRoomAsync();
-                Lobbies.Clear();
-                foreach (var r in list) Lobbies.Add(r);
-            }
-            catch { /* non-fatal; polling will catch up */ }
-        }
-
+        // ---------- helpers ----------
         private void ShowStatus(string message)
         {
-            // Hook this up to a TextBlock named "StatusText" if you want visual feedback.
-            // Example XAML: <TextBlock x:Name="StatusText" Margin="0,4,0,0" Foreground="DarkRed"/>
             if (StatusText != null) StatusText.Text = message ?? "";
-            Console.WriteLine(message);
+            System.Diagnostics.Debug.WriteLine(message);
         }
     }
 }

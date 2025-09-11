@@ -3,111 +3,66 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:ClientSide"
         xmlns:local1="clr-namespace:SharedContracts;assembly=SharedContracts"
         mc:Ignorable="d"
-        Title="Mortal Kombat X — General Lobby"
-        Height="520" Width="980"
-        MinHeight="420" MinWidth="760">
+        Title="GeneralLobby" Height="450" Width="800">
+
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="360"/>
-            <ColumnDefinition Width="5"/>
-            <!-- splitter gutter -->
-            <ColumnDefinition Width="*"/>
+            <ColumnDefinition />
+            <ColumnDefinition />
         </Grid.ColumnDefinitions>
 
-        <!-- Left: lobby list & controls -->
-        <DockPanel Grid.Column="0" LastChildFill="True" Margin="10">
-            <!-- Top controls -->
-            <StackPanel DockPanel.Dock="Top" Orientation="Vertical" Margin="0,0,0,10">
-                <TextBlock Text="Lobby Rooms"
-                           FontWeight="Bold"
-                           FontSize="16"
-                           HorizontalAlignment="Center"
-                           Margin="0,0,0,8"/>
-                <UniformGrid Rows="1" Columns="3" Margin="0,0,0,6">
-                    <Button Content="Log out"
-                            Click="LogOutButton_Click"
-                            Margin="0,0,6,0" />
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                        <Button x:Name="CreateRoomBtn"
-                                Content="Create room"
-                                Click="CreateRoomPopup_Click"
-                                Margin="0,0,6,0"/>
-                        <!-- Popup for Create Room -->
-                        <Popup x:Name="createRoomPopup"
-                               PlacementTarget="{Binding ElementName=CreateRoomBtn}"
-                               Placement="Bottom"
-                               StaysOpen="False"
-                               AllowsTransparency="True">
-                            <Border Background="White" BorderBrush="#FF444444" BorderThickness="1" CornerRadius="6" Padding="12" >
-                                <StackPanel Orientation="Vertical" MinWidth="260">
-                                    <TextBlock Text="Create Room" FontWeight="Bold" FontSize="14" Margin="0,0,0,8"/>
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                                        <Label Content="Room name:" MinWidth="96" VerticalAlignment="Center"/>
-                                        <TextBox x:Name="roomNameInput" Width="140"/>
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                                        <Label Content="Capacity:" MinWidth="96" VerticalAlignment="Center"/>
-                                        <TextBox x:Name="roomCapacityInput" Width="80"/>
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                        <Label Content="Ranked:" MinWidth="96" VerticalAlignment="Center"/>
-                                        <CheckBox x:Name="isRankedInput" VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                    <Button x:Name="createRoomButton"
-                                            Content="Create room"
-                                            Click="CreateRoomButton_Click"
-                                            HorizontalAlignment="Right"
-                                            Width="110"/>
-                                </StackPanel>
-                            </Border>
-                        </Popup>
-                    </StackPanel>
-                    <Button Content="Join room"
-                            Click="JoinRoomButton_Click"/>
-                </UniformGrid>
-
-                <!-- Status / errors (bound from code-behind helper) -->
-                <TextBlock x:Name="StatusText"
-                           Foreground="#CCB00000"
-                           TextWrapping="Wrap"
-                           MinHeight="20"/>
-            </StackPanel>
-
-            <!-- Lobby list -->
-            <Border BorderBrush="#FFE0E0E0" BorderThickness="1" CornerRadius="6">
-                <ListBox x:Name="listOfLobbies"
-                         ItemsSource="{Binding Lobbies}"
-                         Margin="4"
-                         ScrollViewer.VerticalScrollBarVisibility="Auto">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate DataType="{x:Type local1:LobbyRoomInfo}">
-                            <StackPanel Orientation="Vertical" Margin="0,4">
-                                <TextBlock Text="{Binding RoomName}" FontWeight="SemiBold"/>
-                                <!-- Optional extra info if your DTO has it:
-                                <TextBlock Text="{Binding RoomId}" FontSize="11" Foreground="#99000000"/>
-                                <TextBlock Text="{Binding Capacity, StringFormat=Capacity: {0}}" FontSize="11" Foreground="#99000000"/>
-                                -->
-                            </StackPanel>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-            </Border>
-        </DockPanel>
-
-        <!-- Splitter -->
-        <GridSplitter Grid.Column="1"
-                      HorizontalAlignment="Stretch"
+        <GridSplitter Grid.Column="0"
+                      HorizontalAlignment="Right"
                       VerticalAlignment="Stretch"
-                      Background="#FFE6E6E6"
+                      Background="Black"
                       ShowsPreview="True"
-                      Width="5" />
+                      Width="5"/>
 
-        <!-- Right: room chat content swaps here -->
-        <ContentControl Grid.Column="2"
-                        x:Name="lobbyChatContent"
-                        Content=""
-                        Margin="10"/>
+        <!-- Right: room chat goes here -->
+        <ContentControl Grid.Column="1" Name="lobbyChatContent" Content="" />
+
+        <!-- Left: lobby controls/list -->
+        <StackPanel Grid.Column="0" Orientation="Vertical" Margin="8">
+            <Label Content="Lobby rooms" FontWeight="Bold" HorizontalAlignment="Center"/>
+
+            <UniformGrid Rows="1" Columns="3" Margin="0,0,0,6">
+                <Button Content="Log out" HorizontalAlignment="Center" Click="LogOutButton_Click"/>
+                <Button Content="Create room" HorizontalAlignment="Center" Click="CreateRoomPopup_Click"/>
+                <Popup Name="createRoomPopup" IsOpen="false" AllowsTransparency="True" StaysOpen="False">
+                    <Border Background="White" BorderBrush="Black" BorderThickness="1" Padding="8">
+                        <StackPanel Orientation="Vertical">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                <Label Content="Room name:" Width="100" />
+                                <TextBox Name="roomNameInput" Width="140"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                <Label Content="Room capacity:" Width="100" />
+                                <TextBox Name="roomCapacityInput" Width="100"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <Label Content="Is ranked:" Width="100" />
+                                <CheckBox Name="isRankedInput"/>
+                            </StackPanel>
+                            <Button Name="createRoomButton" Content="Create room" Click="CreateRoomButton_Click" HorizontalAlignment="Right"/>
+                        </StackPanel>
+                    </Border>
+                </Popup>
+                <Button Content="Join room" HorizontalAlignment="Center" Click="JoinRoomButton_Click"/>
+            </UniformGrid>
+
+            <!-- Status line -->
+            <TextBlock x:Name="StatusText" Foreground="DarkRed" Margin="0,0,0,6"/>
+
+            <ListBox Name="listOfLobbies">
+                <ListBox.ItemTemplate>
+                    <DataTemplate DataType="{x:Type local1:LobbyRoomInfo}">
+                        <TextBlock Text="{Binding RoomName}" FontWeight="Bold"/>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </StackPanel>
     </Grid>
 </Window>

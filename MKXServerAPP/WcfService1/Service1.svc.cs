@@ -127,6 +127,11 @@ namespace WcfService1
             return Task.FromResult(list);
         }
 
+        public Task<List<SharedFile>> ListFilesInRoomAsync(string roomId)
+        {
+            var list = Files.Values.Where(x => x.RoomID.Equals(roomId)).ToList();
+            return Task.FromResult(list);
+        }
 
         // Chat
         public Task<bool> SendChatAsync(ChatMessage message)

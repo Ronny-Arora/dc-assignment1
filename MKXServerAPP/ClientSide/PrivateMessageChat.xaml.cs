@@ -1,17 +1,11 @@
 ﻿using SharedContracts;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
-using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
 
 namespace ClientSide
 {
@@ -23,8 +17,12 @@ namespace ClientSide
         private readonly LobbyServices _proxy;
         private readonly string _currentPlayer;
         private readonly string _otherPlayer;
-        private List<ChatMessage> _messages;
         private readonly LobbyRoomInfo _room;
+
+        private ObservableCollection<ChatMessage> _thread = new ObservableCollection<ChatMessage>();
+        private CancellationTokenSource _pollCts;
+        private readonly Random _rng = new Random();
+        private DateTime _lastSeenUtc;
 
         public PrivateMessageChat(string currentPlayer, string otherPlayer,
             LobbyRoomInfo currentRoom, LobbyServices connection)
@@ -36,47 +34,114 @@ namespace ClientSide
             _otherPlayer = otherPlayer;
             _room = currentRoom;
 
-            privateMessageLabel.Content += _otherPlayer;
-            GetMessages();
+            privateMessageLabel.Content = "Private Messaging: " + _otherPlayer;
+
+            privateMessages.ItemsSource = _thread;
+
+            _lastSeenUtc = DateTime.UtcNow.AddMinutes(-10);
+
+            Loaded += delegate { StartPolling(); };
+            Unloaded += delegate { StopPolling(); };
+
+            _ = LoadInitialAsync();
         }
 
-        public async void GetMessages()
+        private async Task LoadInitialAsync()
         {
-            // Update for real-time changes
-
-            int currentYear = DateTime.Now.Year;
-            DateTime lastYearDate = new DateTime(currentYear - 1, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-
-            _messages = await _proxy.GetPrivateHistoryAsync(_currentPlayer, _otherPlayer, lastYearDate);
-
-            privateMessages.ItemsSource = _messages;
+            try
+            {
+                DateTime since = DateTime.UtcNow.AddHours(-12);
+                List<ChatMessage> history = await _proxy.GetPrivateHistoryAsync(_currentPlayer, _otherPlayer, since);
+                _thread.Clear();
+                foreach (ChatMessage m in history.OrderBy(m => m.TimestampUtc)) _thread.Add(m);
+                if (_thread.Count > 0) _lastSeenUtc = _thread[_thread.Count - 1].TimestampUtc.AddTicks(1);
+            }
+            catch (Exception ex)
+            {
+                pmStatusText.Text = "Load failed: " + ex.Message;
+            }
         }
 
-        private void ShareFileButton_Click(object sender, RoutedEventArgs e)
+        // ---------- Polling ----------
+        private void StartPolling()
         {
-
+            StopPolling();
+            _pollCts = new CancellationTokenSource();
+            _ = PollLoopAsync(_pollCts.Token);
         }
 
-        private void SendMessageButton_Click(object sender, RoutedEventArgs e)
+        private void StopPolling()
         {
-            // check for empty message
+            try { if (_pollCts != null) _pollCts.Cancel(); }
+            catch { }
+            finally { if (_pollCts != null) _pollCts.Dispose(); _pollCts = null; }
+        }
+
+        private async Task PollLoopAsync(CancellationToken ct)
+        {
+            TimeSpan baseDelay = TimeSpan.FromMilliseconds(1000);
+            TimeSpan maxDelay = TimeSpan.FromSeconds(8);
+            TimeSpan delay = baseDelay;
+
+            while (!ct.IsCancellationRequested)
+            {
+                try
+                {
+                    List<ChatMessage> newPms = await _proxy.GetPrivateHistoryAsync(_currentPlayer, _otherPlayer, _lastSeenUtc);
+
+                    foreach (ChatMessage pm in newPms.OrderBy(m => m.TimestampUtc))
+                    {
+                        _thread.Add(pm);
+                        if (pm.TimestampUtc >= _lastSeenUtc)
+                            _lastSeenUtc = pm.TimestampUtc.AddTicks(1);
+                    }
+
+                    pmStatusText.Text = string.Format("Last refresh: {0:T} • Messages: {1}", DateTime.Now, _thread.Count);
+                    delay = baseDelay;
+                }
+                catch (OperationCanceledException) { break; }
+                catch (Exception ex)
+                {
+                    pmStatusText.Text = "Polling error: " + ex.Message;
+                    double next = Math.Min(delay.TotalMilliseconds * 2, maxDelay.TotalMilliseconds);
+                    delay = TimeSpan.FromMilliseconds(next);
+                }
+
+                TimeSpan jitter = TimeSpan.FromMilliseconds(_rng.Next(0, 300));
+                try { await Task.Delay(delay + jitter, ct); }
+                catch (OperationCanceledException) { break; }
+            }
+        }
+
+        // ---------- Send ----------
+        private async void SendMessageButton_Click(object sender, RoutedEventArgs e)
+        {
+            string text = (messageInput.Text ?? "").Trim();
+            if (string.IsNullOrEmpty(text)) return;
 
             ChatMessage newMessage = new ChatMessage
             {
                 RoomId = _room.RoomId,
                 Sender = _currentPlayer,
-                Body = messageInput.Text,
+                Body = text,
                 TimestampUtc = DateTime.UtcNow,
                 IsPrivate = true,
-                PrivateRecipient = _otherPlayer,
+                PrivateRecipient = _otherPlayer
             };
 
-            // error handling
+            try
+            {
+                await _proxy.SendChatAsync(newMessage);
+                messageInput.Text = "";
 
-            _proxy.SendChatAsync(newMessage);
-            messageInput.Text = "";
-
-            GetMessages();
+                _thread.Add(newMessage);
+                if (newMessage.TimestampUtc >= _lastSeenUtc)
+                    _lastSeenUtc = newMessage.TimestampUtc.AddTicks(1);
+            }
+            catch (Exception ex)
+            {
+                pmStatusText.Text = "Send failed: " + ex.Message;
+            }
         }
     }
 }
