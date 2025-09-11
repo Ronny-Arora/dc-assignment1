@@ -89,10 +89,10 @@ namespace ClientSide
 
         }
 
-        private void LeaveRoomButton_Click(object sender, RoutedEventArgs e)
+        private async void LeaveRoomButton_Click(object sender, RoutedEventArgs e)
         {
             // error handling
-            _proxy.LeaveRoomAsync(_roomInfo.RoomId, _player.Username);
+            await _proxy.LeaveRoomAsync(_roomInfo.RoomId, _player.Username);
 
             _generalLobby.Content = null;
         }

@@ -77,11 +77,11 @@ namespace ClientSide
             }
         }
 
-        private void LogOutButton_Click(object sender, RoutedEventArgs e)
+        private async void LogOutButton_Click(object sender, RoutedEventArgs e)
         {
             if (_currentRoom != null)
             {
-                _proxy.LeaveRoomAsync(_currentRoom.RoomId, _player.Username);
+                await _proxy.LeaveRoomAsync(_currentRoom.RoomId, _player.Username);
                 _currentRoom = null;
             }
 
