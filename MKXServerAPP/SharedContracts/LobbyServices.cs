@@ -34,6 +34,13 @@ namespace SharedContracts
         [OperationContract, FaultContract(typeof(ApiFault))]
         Task<bool> SendChatAsync(ChatMessage message);
 
+        // Chat history (pull)
+        [OperationContract, FaultContract(typeof(ApiFault))]
+        Task<List<ChatMessage>> GetRoomHistoryAsync(string roomId, DateTime sinceUtc);
+
+        [OperationContract, FaultContract(typeof(ApiFault))]
+        Task<List<ChatMessage>> GetPrivateHistoryAsync(string user1, string user2, DateTime sinceUtc);
+
         // Files (byte[] version for now)
         [OperationContract, FaultContract(typeof(ApiFault))]
         Task<SharedFile> UploadFileAsync(SharedFile file); // returns metadata with FileId
@@ -44,7 +51,6 @@ namespace SharedContracts
         // Summary
         [OperationContract, FaultContract(typeof(ApiFault))]
         Task<LobbySummary> GetLobbySummaryAsync();
-
 
     }
 }
