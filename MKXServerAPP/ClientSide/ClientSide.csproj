@@ -57,6 +57,8 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
+    <Compile Include="Services\ClientCallback.cs" />
+    <Compile Include="Services\DuplexServerProxy.cs" />
     <Page Include="GeneralLobby.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>

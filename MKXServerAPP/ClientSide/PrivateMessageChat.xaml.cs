@@ -1,60 +1,57 @@
 ﻿using SharedContracts;
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using ClientSide.Services; // DuplexServerProxy, ClientCallback
 
 namespace ClientSide
 {
-    /// <summary>
-    /// Interaction logic for PrivateMessageChat.xaml
-    /// </summary>
     public partial class PrivateMessageChat : Window
     {
-        private readonly LobbyServices _proxy;
-        private readonly string _currentPlayer;
-        private readonly string _otherPlayer;
+        private readonly DuplexServerProxy _proxy;
+        private readonly ClientCallback _callback;
+        private readonly string _me;
+        private readonly string _other;
         private readonly LobbyRoomInfo _room;
 
-        private ObservableCollection<ChatMessage> _thread = new ObservableCollection<ChatMessage>();
-        private CancellationTokenSource _pollCts;
-        private readonly Random _rng = new Random();
-        private DateTime _lastSeenUtc;
+        private readonly ObservableCollection<ChatMessage> _thread = new ObservableCollection<ChatMessage>();
 
-        public PrivateMessageChat(string currentPlayer, string otherPlayer,
-            LobbyRoomInfo currentRoom, LobbyServices connection)
+        public PrivateMessageChat(string currentPlayer,
+                                  string otherPlayer,
+                                  LobbyRoomInfo currentRoom,
+                                  DuplexServerProxy proxy,
+                                  ClientCallback callback)
         {
             InitializeComponent();
 
-            _proxy = connection;
-            _currentPlayer = currentPlayer;
-            _otherPlayer = otherPlayer;
+            _me = currentPlayer;
+            _other = otherPlayer;
             _room = currentRoom;
+            _proxy = proxy;
+            _callback = callback;
 
-            privateMessageLabel.Content = "Private Messaging: " + _otherPlayer;
-
+            privateMessageLabel.Content = "Private Messaging: " + _other;
             privateMessages.ItemsSource = _thread;
 
-            _lastSeenUtc = DateTime.UtcNow.AddMinutes(-10);
+            Loaded += async (s, e) => await LoadInitialAsync();
+            Unloaded += (s, e) => _callback.PrivateMessage -= OnPrivateMessage;
 
-            Loaded += delegate { StartPolling(); };
-            Unloaded += delegate { StopPolling(); };
-
-            _ = LoadInitialAsync();
+            // listen for future pushes while this window is open
+            _callback.PrivateMessage += OnPrivateMessage;
         }
 
+        // Pull existing history so the thread isn't empty when we open
         private async Task LoadInitialAsync()
         {
             try
             {
-                DateTime since = DateTime.UtcNow.AddHours(-12);
-                List<ChatMessage> history = await _proxy.GetPrivateHistoryAsync(_currentPlayer, _otherPlayer, since);
+                var since = DateTime.UtcNow.AddHours(-12);
+                var history = await _proxy.Channel.GetPrivateHistoryAsync(_me, _other, since);
                 _thread.Clear();
-                foreach (ChatMessage m in history.OrderBy(m => m.TimestampUtc)) _thread.Add(m);
-                if (_thread.Count > 0) _lastSeenUtc = _thread[_thread.Count - 1].TimestampUtc.AddTicks(1);
+                foreach (var m in history.OrderBy(m => m.TimestampUtc)) _thread.Add(m);
+                pmStatusText.Text = $"Loaded {history.Count} messages";
             }
             catch (Exception ex)
             {
@@ -62,81 +59,39 @@ namespace ClientSide
             }
         }
 
-        // ---------- Polling ----------
-        private void StartPolling()
+        // Append incoming messages pushed by the server
+        private void OnPrivateMessage(ChatMessage msg)
         {
-            StopPolling();
-            _pollCts = new CancellationTokenSource();
-            _ = PollLoopAsync(_pollCts.Token);
+            if (msg == null || !msg.IsPrivate) return;
+            if (!string.Equals(msg.RoomId, _room.RoomId, StringComparison.OrdinalIgnoreCase)) return;
+
+            // Only append incoming messages: other -> me
+            if (!string.Equals(msg.PrivateRecipient, _me, StringComparison.OrdinalIgnoreCase)) return;
+            if (!string.Equals(msg.Sender, _other, StringComparison.OrdinalIgnoreCase)) return;
+
+            Dispatcher.Invoke(() => _thread.Add(msg));
         }
 
-        private void StopPolling()
-        {
-            try { if (_pollCts != null) _pollCts.Cancel(); }
-            catch { }
-            finally { if (_pollCts != null) _pollCts.Dispose(); _pollCts = null; }
-        }
-
-        private async Task PollLoopAsync(CancellationToken ct)
-        {
-            TimeSpan baseDelay = TimeSpan.FromMilliseconds(1000);
-            TimeSpan maxDelay = TimeSpan.FromSeconds(8);
-            TimeSpan delay = baseDelay;
-
-            while (!ct.IsCancellationRequested)
-            {
-                try
-                {
-                    List<ChatMessage> newPms = await _proxy.GetPrivateHistoryAsync(_currentPlayer, _otherPlayer, _lastSeenUtc);
-
-                    foreach (ChatMessage pm in newPms.OrderBy(m => m.TimestampUtc))
-                    {
-                        _thread.Add(pm);
-                        if (pm.TimestampUtc >= _lastSeenUtc)
-                            _lastSeenUtc = pm.TimestampUtc.AddTicks(1);
-                    }
-
-                    pmStatusText.Text = string.Format("Last refresh: {0:T} • Messages: {1}", DateTime.Now, _thread.Count);
-                    delay = baseDelay;
-                }
-                catch (OperationCanceledException) { break; }
-                catch (Exception ex)
-                {
-                    pmStatusText.Text = "Polling error: " + ex.Message;
-                    double next = Math.Min(delay.TotalMilliseconds * 2, maxDelay.TotalMilliseconds);
-                    delay = TimeSpan.FromMilliseconds(next);
-                }
-
-                TimeSpan jitter = TimeSpan.FromMilliseconds(_rng.Next(0, 300));
-                try { await Task.Delay(delay + jitter, ct); }
-                catch (OperationCanceledException) { break; }
-            }
-        }
-
-        // ---------- Send ----------
-        private async void SendMessageButton_Click(object sender, RoutedEventArgs e)
+        private void SendMessageButton_Click(object sender, RoutedEventArgs e)
         {
             string text = (messageInput.Text ?? "").Trim();
             if (string.IsNullOrEmpty(text)) return;
 
-            ChatMessage newMessage = new ChatMessage
+            var newMessage = new ChatMessage
             {
                 RoomId = _room.RoomId,
-                Sender = _currentPlayer,
+                Sender = _me,
                 Body = text,
                 TimestampUtc = DateTime.UtcNow,
                 IsPrivate = true,
-                PrivateRecipient = _otherPlayer
+                PrivateRecipient = _other
             };
 
             try
             {
-                await _proxy.SendChatAsync(newMessage);
+                _proxy.Channel.SendPrivateMessage(newMessage); // IsOneWay push
                 messageInput.Text = "";
-
-                _thread.Add(newMessage);
-                if (newMessage.TimestampUtc >= _lastSeenUtc)
-                    _lastSeenUtc = newMessage.TimestampUtc.AddTicks(1);
+                _thread.Add(newMessage); // optimistic add; server will also push back
             }
             catch (Exception ex)
             {

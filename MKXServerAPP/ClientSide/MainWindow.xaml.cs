@@ -1,59 +1,71 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+using System.ServiceModel;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
-
 using SharedContracts;
-using System.ServiceModel;
+using ClientSide.Services;  // ClientCallback, DuplexServerProxy
 
 namespace ClientSide
 {
-    /// <summary>
-    /// Interaction logic for MainWindow.xaml
-    /// </summary>
     public partial class MainWindow : Window
     {
-        private readonly ChannelFactory<LobbyServices> _factory;
-        private readonly LobbyServices _proxy;
+        private ChannelFactory<LobbyServices> _factory;
+        private LobbyServices _pollingProxy;
 
         public MainWindow()
         {
             InitializeComponent();
 
+            // Keep your HTTP polling service for registration
             var binding = new BasicHttpBinding();
             var endpoint = new EndpointAddress("http://localhost:59000/Service1.svc");
             _factory = new ChannelFactory<LobbyServices>(binding, endpoint);
-            _proxy = _factory.CreateChannel();
+            _pollingProxy = _factory.CreateChannel();
         }
 
-        public Task<PlayerInfo> Register(string username)
-        {
-            return _proxy.RegisterPlayerAsync(username);
-        }
+        private Task<PlayerInfo> Register(string username) =>
+            _pollingProxy.RegisterPlayerAsync(username);
 
         private async void Button_ClickAsync(object sender, RoutedEventArgs e)
         {
-            // TODO: exception handling and display error text
-            PlayerInfo currentPlayer = await Register(usernameInput.Text);
+            var username = (usernameInput.Text ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(username))
+            {
+                MessageBox.Show("Enter a username.");
+                return;
+            }
 
-            // extra players to test private messaging
+            // 1) Register via HTTP (so you appear online to polling clients too)
+            PlayerInfo currentPlayer;
+            try { currentPlayer = await Register(username); }
+            catch (Exception ex) { MessageBox.Show("Register failed: " + ex.Message); return; }
+
+            // 2) Open duplex channel + join lobby (server push)
+            var callback = new ClientCallback();
+            var proxy = new DuplexServerProxy(
+                callback,
+                "net.tcp://localhost:9090/MKX/Duplex"   // <-- change to 9090/MKX/Duplex
+            );
 
 
-            // Open general lobby window
-            var generalLobby = new GeneralLobby(currentPlayer, _proxy);
+            try
+            {
+                proxy.Open();
+                var ok = await proxy.Channel.LoginAsync(username);
+                if (!ok) { MessageBox.Show("Username already in use on duplex channel."); return; }
+                await proxy.Channel.JoinLobbyAsync();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Duplex connect failed: " + ex.Message);
+                try { proxy.Dispose(); } catch { }
+                return;
+            }
+
+            // 3) Show the duplex lobby and close this window
+            var generalLobby = new GeneralLobby(currentPlayer, proxy, callback);
             generalLobby.Show();
             this.Close();
-
         }
     }
 }
